@@ -1,0 +1,18 @@
+[build]
+  publish = "built"
+  # The actual build is driven by the GitHub Actions workflow; Netlify
+  # deploys the pre-built directory.
+  command = ""
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+
+[[headers]]
+  for = "/cv.pdf"
+  [headers.values]
+    Content-Type = "application/pdf"
+    Content-Disposition = 'inline; filename="charles-lowell-cv.pdf"'

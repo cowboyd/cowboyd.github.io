@@ -1,0 +1,8 @@
+/.agent-shell/
+/built/
+/.env
+/.env.local
+/node_modules/
+*.log
+/cv.txt
+.DS_Store

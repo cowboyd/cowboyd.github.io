@@ -1,0 +1,119 @@
+name: deploy
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+    branches:
+      - production
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    permissions:
+      id-token: write
+      contents: read
+      pull-requests: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Cache Deno dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/deno
+          key: ${{ runner.os }}-deno-${{ hashFiles('deno.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-deno-
+
+      - name: Cache astral Chromium
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/astral
+          key: ${{ runner.os }}-astral-chromium-v1
+
+      - name: Type check
+        run: deno task check
+
+      - name: Serve website
+        run: |
+          deno task start > server.log 2>&1 &
+          echo $! > server.pid
+          for i in {1..60}; do
+            if curl -fsS -o /dev/null http://127.0.0.1:8005; then
+              echo "server up"
+              exit 0
+            fi
+            if ! kill -0 $(cat server.pid) 2>/dev/null; then
+              echo "server died during startup. log:"
+              cat server.log
+              exit 1
+            fi
+            sleep 1
+          done
+          echo "server never came up. log:"
+          cat server.log
+          exit 1
+        timeout-minutes: 3
+
+      - name: Staticalize
+        env:
+          ASTRAL_QUIET_INSTALL: "1"
+        run: |
+          deno task staticalize
+
+      - name: Verify build output
+        run: |
+          test -f built/index.html
+          test -f built/cv/index.html || test -f built/cv.html
+          test -f built/cv.pdf
+          test -f built/sitemap.xml
+          head -c 4 built/cv.pdf | grep -q '%PDF'
+          test $(stat -c%s built/cv.pdf) -gt 10000
+          grep -q '<?xml' built/sitemap.xml
+          grep -q '<url>' built/sitemap.xml
+          grep -q '<loc>' built/sitemap.xml
+          ! grep -q '<urls>' built/sitemap.xml
+
+      - name: Install Netlify CLI
+        run: npm install -g netlify-cli@17
+
+      - name: Deploy PR preview
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        id: netlify_preview
+        env:
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
+          DO_NOT_TRACK: "1"
+        run: |
+          netlify deploy --dir=built \
+            --alias="pr-${{ github.event.pull_request.number }}" \
+            --message="PR #${{ github.event.pull_request.number }}" \
+            --json > deploy.json
+          url=$(jq -er .deploy_url deploy.json)
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+
+      - name: Comment PR with preview URL
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: preview-deploy
+          message: |
+            🚢 Preview deployed to ${{ steps.netlify_preview.outputs.url }}
+
+      - name: Deploy to production
+        if: github.event_name == 'push' && github.ref == 'refs/heads/production'
+        env:
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
+          DO_NOT_TRACK: "1"
+        run: |
+          netlify deploy --prod --dir=built \
+            --message="Prod deploy from ${{ github.sha }}"
