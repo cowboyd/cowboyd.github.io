@@ -13,39 +13,8 @@ import { cvRoute } from "./routes/cv.tsx";
 import { cvPdfRoute } from "./routes/cv-pdf.ts";
 import { blogIndexRoute } from "./routes/blog-index.tsx";
 import { legacyPageRoute } from "./routes/legacy-page-route.ts";
-
-const faviconBytes = await Deno.readFile(
-  new URL("./assets/favicon.png", import.meta.url),
-);
-
-function faviconRoute() {
-  return function* () {
-    return new Response(faviconBytes, {
-      headers: {
-        "content-type": "image/png",
-        "cache-control": "public, max-age=86400",
-      },
-    });
-  };
-}
-
-const robotsTxt = [
-  "User-agent: *",
-  "Disallow: /hat.html",
-  "Disallow: /checked-vs-unchecked.html",
-  "Disallow: /images/",
-  "",
-  "Sitemap: https://cogentdude.com/sitemap.xml",
-  "",
-].join("\n");
-
-function robotsRoute() {
-  return function* () {
-    return new Response(robotsTxt, {
-      headers: { "content-type": "text/plain; charset=utf-8" },
-    });
-  };
-}
+import { faviconRoute } from "./routes/favicon-route.ts";
+import { robotsRoute } from "./routes/robots-route.ts";
 
 await main(function* (args) {
   let _dev = !!args.includes("--dev");
