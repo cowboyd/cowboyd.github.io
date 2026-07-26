@@ -1,20 +1,25 @@
 name: deploy
 on:
   workflow_dispatch:
-  pull_request:
   push:
     branches:
-      - production
+      - master
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Serialize deploys; don't cancel a run mid-publish or Pages ends up in a
+# weird half-updated state.
+concurrency:
+  group: pages
+  cancel-in-progress: false
 
 jobs:
-  deploy:
+  build:
     runs-on: ubuntu-latest
     timeout-minutes: 20
-
-    permissions:
-      id-token: write
-      contents: read
-      pull-requests: write
 
     steps:
       - name: Checkout
@@ -66,8 +71,7 @@ jobs:
       - name: Staticalize
         env:
           ASTRAL_QUIET_INSTALL: "1"
-        run: |
-          deno task staticalize
+        run: deno task staticalize
 
       - name: Verify build output
         run: |
@@ -75,45 +79,32 @@ jobs:
           test -f built/cv/index.html || test -f built/cv.html
           test -f built/cv.pdf
           test -f built/sitemap.xml
+          test -f built/CNAME
+          test -f built/hat.html
+          test -f built/checked-vs-unchecked.html
+          test -f built/images/hat.jpg
           head -c 4 built/cv.pdf | grep -q '%PDF'
           test $(stat -c%s built/cv.pdf) -gt 10000
           grep -q '<?xml' built/sitemap.xml
           grep -q '<url>' built/sitemap.xml
           grep -q '<loc>' built/sitemap.xml
           ! grep -q '<urls>' built/sitemap.xml
+          # Legacy pages must be present but must NOT appear in the sitemap.
+          ! grep -q '/hat.html' built/sitemap.xml
+          ! grep -q '/checked-vs-unchecked.html' built/sitemap.xml
 
-      - name: Install Netlify CLI
-        run: npm install -g netlify-cli@17
-
-      - name: Deploy PR preview
-        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
-        id: netlify_preview
-        env:
-          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
-          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
-          DO_NOT_TRACK: "1"
-        run: |
-          netlify deploy --dir=built \
-            --alias="pr-${{ github.event.pull_request.number }}" \
-            --message="PR #${{ github.event.pull_request.number }}" \
-            --json > deploy.json
-          url=$(jq -er .deploy_url deploy.json)
-          echo "url=$url" >> "$GITHUB_OUTPUT"
-
-      - name: Comment PR with preview URL
-        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
-        uses: marocchino/sticky-pull-request-comment@v2
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
         with:
-          header: preview-deploy
-          message: |
-            🚢 Preview deployed to ${{ steps.netlify_preview.outputs.url }}
+          path: built
 
-      - name: Deploy to production
-        if: github.event_name == 'push' && github.ref == 'refs/heads/production'
-        env:
-          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
-          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
-          DO_NOT_TRACK: "1"
-        run: |
-          netlify deploy --prod --dir=built \
-            --message="Prod deploy from ${{ github.sha }}"
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

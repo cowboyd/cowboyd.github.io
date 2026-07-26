@@ -13,15 +13,12 @@ deno task test        # run smoke tests
 
 ## Deploying
 
-Deployment is driven by `.github/workflows/deploy.yaml`. Two secrets must be configured on the repo:
+Deployment is driven by `.github/workflows/deploy.yaml` and publishes to
+GitHub Pages via the modern Actions-based flow (no `gh-pages` branch).
 
-- `NETLIFY_AUTH_TOKEN` — personal access token from Netlify user settings
-- `NETLIFY_SITE_ID` — from the Netlify site's General → Site information page
+Enable it once per repo: **Settings → Pages → Source: GitHub Actions**.
 
-Push to the `production` branch to trigger a prod deploy. PRs get preview deploys automatically.
-
-To promote the current `main` to production:
-
-```bash
-git push origin main:production
-```
+Every push to `master` builds the site (deno task staticalize, including the
+PDF and the legacy pages copy) and deploys the resulting `built/` directory as
+a Pages artifact. The `CNAME` file in the repo root gets copied into `built/`
+so the custom domain (cogentdude.com) is preserved.
