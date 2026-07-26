@@ -73,6 +73,13 @@ jobs:
           ASTRAL_QUIET_INSTALL: "1"
         run: deno task staticalize
 
+      - name: Dump server log on failure
+        if: failure()
+        run: |
+          echo "=== server.log ==="
+          cat server.log || echo "(no server.log)"
+          echo "=== end ==="
+
       - name: Verify build output
         run: |
           test -f built/index.html

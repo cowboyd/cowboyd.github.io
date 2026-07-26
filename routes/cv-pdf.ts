@@ -3,6 +3,15 @@ import { launch } from "@astral/astral";
 import { useCurrentRequest } from "../plugins/current-request.ts";
 import type { SitemapRoute } from "../plugins/sitemap.ts";
 
+// Chromium needs these when running as root inside a container / CI runner.
+// Harmless in local dev. --disable-dev-shm-usage avoids OOM in the small
+// /dev/shm you get on hosted CI.
+const CHROMIUM_ARGS = [
+  "--no-sandbox",
+  "--disable-setuid-sandbox",
+  "--disable-dev-shm-usage",
+];
+
 export function cvPdfRoute(): SitemapRoute<Response> {
   return {
     *routemap(generate) {
@@ -13,7 +22,15 @@ export function cvPdfRoute(): SitemapRoute<Response> {
       let url = new URL(request.url);
       let cvUrl = new URL("/cv", url).toString();
 
-      let browser = yield* call(() => launch());
+      let browser = yield* call(async () => {
+        try {
+          return await launch({ args: CHROMIUM_ARGS });
+        } catch (err) {
+          // Surface the real error to the server log so CI can print it.
+          console.error("astral launch failed:", err);
+          throw err;
+        }
+      });
       try {
         let page = yield* call(() => browser.newPage());
         let cdp = page.unsafelyGetCelestialBindings();
