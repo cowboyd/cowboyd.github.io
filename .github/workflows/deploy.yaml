@@ -82,6 +82,11 @@ jobs:
 
       - name: Verify build output
         run: |
+          set -euxo pipefail
+          find built -maxdepth 3 -type f | sort
+          echo "=== sitemap.xml ==="
+          cat built/sitemap.xml
+          echo "=== end sitemap ==="
           test -f built/index.html
           test -f built/cv/index.html || test -f built/cv.html
           test -f built/cv.pdf
@@ -91,7 +96,7 @@ jobs:
           test -f built/checked-vs-unchecked.html
           test -f built/images/hat.jpg
           head -c 4 built/cv.pdf | grep -q '%PDF'
-          test $(stat -c%s built/cv.pdf) -gt 10000
+          test "$(stat -c%s built/cv.pdf)" -gt 10000
           grep -q '<?xml' built/sitemap.xml
           grep -q '<url>' built/sitemap.xml
           grep -q '<loc>' built/sitemap.xml
